@@ -1,68 +1,47 @@
 // ==UserScript==
-// @name         Alt+Click Media Saver (images & videos)
+// @name         Alt+Click Absolute Media Saver
 // @namespace    alt-click-media-saver
-// @version      1.1
-// @description  Save images and videos with Alt+Click on any website (fetch + blob)
+// @version      1.5
+// @description  Force download image/video with Alt+Click using GM_download
 // @match        *://*/*
-// @run-at       document-start
-// @grant        none
+// @grant        GM_download
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    async function saveByFetch(url) {
-        try {
-            const response = await fetch(url, { mode: 'cors' });
-            if (!response.ok) throw new Error('Fetch failed');
-
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-
-            const filename =
-                url.split('/').pop()?.split('?')[0] ||
-                `file_${Date.now()}`;
-
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-
-            URL.revokeObjectURL(blobUrl);
-        } catch (err) {
-            console.warn('Alt+Click save failed:', err);
-        }
-    }
-
-    function getMediaURL(el) {
-        if (!el) return null;
-
-        if (el.tagName === 'IMG') return el.currentSrc || el.src;
-        if (el.tagName === 'VIDEO') return el.currentSrc || el.src;
-
-        const img = el.closest('img');
-        if (img) return img.currentSrc || img.src;
-
-        const video = el.closest('video');
-        if (video) return video.currentSrc || video.src;
-
-        return null;
-    }
-
-    document.addEventListener('click', e => {
+    document.addEventListener('click', (e) => {
+        // Проверяем только нажатие Alt + ЛКМ
         if (!e.altKey || e.button !== 0) return;
 
-        const url = getMediaURL(e.target);
+        const target = e.target;
+        let url = null;
+
+        // Строго проверяем тег
+        if (target.tagName === 'IMG') {
+            url = target.src || target.currentSrc;
+        } else if (target.tagName === 'VIDEO') {
+            url = target.currentSrc || target.src;
+        }
+
         if (!url) return;
 
-        // ❌ don't mess with blob / stream
-        if (url.startsWith('blob:') || url.includes('.m3u8')) return;
-
+        // Полностью блокируем стандартное поведение сайта и браузера
         e.preventDefault();
         e.stopPropagation();
 
-        saveByFetch(url);
-    }, true);
+        // Извлекаем имя файла
+        const filename = url.split('/').pop().split(/[?#]/)[0] || 'media_file';
+
+        // Используем встроенный загрузчик расширения, который обходит CORS restrictions
+        GM_download({
+            url: url,
+            name: filename,
+            onerror: (err) => {
+                console.error('Download failed via GM_download:', err);
+                // На крайний случай — открываем, если вообще всё сломалось
+                window.open(url, '_blank');
+            }
+        });
+    }, true); // Перехватываем клик на самом раннем этапе
 })();
